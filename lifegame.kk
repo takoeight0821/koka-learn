@@ -14,13 +14,13 @@ effect fun next() : unit
 effect val x-width : int
 effect val y-width : int
 
-alias game = <view, set, x-width, y-width>
+alias game = <view, set, next, x-width, y-width>
 
 fun print-board() : <game, console> unit
   println("=====================================")
   list(0, x-width).foreach fn(x)
     list(0, y-width).foreach fn(y)
-      print(if view(x, y) then "■" else "□")
+      print(if view(x, y) then "#" else " ")
     println("")
 
 fun make-field() : <debug, game, random> unit
@@ -53,13 +53,13 @@ fun set-vector(vec : vector<bool>, x : int, y : int, v : bool) : <debug, x-width
     else
       vec.at(i).default(False)
 
-fun neighbors(x : int, y : int) : <game> list<(int, int)>
-  list(-1, 1).flatmap fn(dx)
-    list(-1, 1).flatmap fn(dy)
-      if dx == 0 && dy == 0 then
-        []
-      else
-        [(x + dx, y + dy)]
+fun neighbors(x : int, y : int) : list<(int, int)>
+  with dx <- list(-1, 1).flatmap
+  with dy <- list(-1, 1).flatmap
+  if dx == 0 && dy == 0 then
+    []
+  else
+    [(x + dx, y + dy)]
 
 fun viewTuple(t : (int, int)) : game bool
   match t
@@ -79,9 +79,7 @@ fun sleep(dt : duration) : <debug, utc, div, ndet> unit
   while { duration(now()) - start < dt }
     ()
 
-
-fun main()
-  with fun debug(msg) ()
+fun runWithVector(body : () -> <game, debug|e> ()) : <debug|e> ()
   with val x-width = 30
   with val y-width = 30
   var table := vector(x-width * y-width, False)
@@ -97,13 +95,39 @@ fun main()
   with fun next()
       table := nextTable
       nextTable := vector(x-width * y-width, False)
-  make-field()
-  next()
-  print-board()
-  while { True }
-    sleep(seconds(1))
-    list(0, x-width).foreach fn(x)
-      list(0, y-width).foreach fn(y)
-        set(x, y, is-live(x, y))
+  body()
+
+fun runWithBit(body : () -> <game, debug, console|e> ()) : <console, debug|e> ()
+  with val x-width = 8
+  with val y-width = 8
+  var table := int64(0)
+  var nextTable := int64(0)
+  with fun view(x, y)
+      if x < 0 || x >= x-width || y < 0 || y >= y-width then
+        False
+      else
+        get-bit(table, x, y)
+  with fun set(x, y, v)
+      if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
+        nextTable := set-bit(nextTable, x, y, v)
+  with fun next()
+      table := nextTable
+      nextTable := int64(0)
+      println("Value: " ++ table.show)
+  body()
+
+
+fun main()
+  with fun debug(msg) ()
+  runWithBit {
+    make-field()
     next()
     print-board()
+    while { True }
+      sleep(seconds(1))
+      list(0, x-width).foreach fn(x)
+        list(0, y-width).foreach fn(y)
+          set(x, y, is-live(x, y))
+      next()
+      print-board()
+  }
