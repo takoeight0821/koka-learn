@@ -11,41 +11,29 @@ effect fun debug(msg : string) : unit
 // view the current cell state at (x, y).
 effect fun view(x : int, y : int) : bool
 // set the next cell state at (x, y) to v. It does not affect the current cell state.
-effect fun set(x : int, y : int, v : bool) : unit
+effect ctl set(x : int, y : int, v : bool) : unit
+effect<a> val nextField : a
 // go to the next generation. This should be called after all cells are set.
-effect fun next() : unit
+effect ctl next() : unit
 effect val x-width : int
 effect val y-width : int
 
-alias game = <view, set, next, x-width, y-width>
+alias game<a> = <view, set, next, nextField<a>, x-width, y-width>
 
 // print the current cells.
-fun print-field() : <game, console> unit
+fun print-field() : <game<a>, console> unit
   println("=====================================")
   list(0, x-width).foreach fn(x)
     list(0, y-width).foreach fn(y)
       print(if view(x, y) then "#" else " ")
     println("")
 
-fun make-field() : <debug, game, random> unit
+fun make-field() : <debug, game<a>, random> unit
   with x <- list(0, x-width).foreach 
+  debug("x: " ++ x.show)
   with y <- list(0, y-width).foreach
+  debug("y: " ++ x.show)
   set(x, y, random-bool())
-
-fun get-bit(bitmap : int64, x : int, y : int) : <debug, x-width> bool
-  val bit = 1.int64.shl(x + y * x-width)
-  debug(bit.show)
-  bitmap.and(bit) != int64(0)
-
-fun set-bit(bitmap : int64, x : int, y : int, v : bool) : <debug, x-width> int64
-  if v then
-    val bit = 1.int64.shl(x + y * x-width)
-    debug(bit.show)
-    bitmap.or(1.int64.shl(x + y * x-width))
-  else
-    val bit = 1.int64.shl(x + y * x-width).not
-    debug(bit.show)
-    bitmap.and(bit)
 
 fun get-vector(vec : vector<bool>, x : int, y : int) : <debug, x-width> bool
   vec.at(x + y * x-width).default(False)
@@ -65,11 +53,11 @@ fun neighbors(x : int, y : int) : list<(int, int)>
   else
     [(x + dx, y + dy)]
 
-fun viewTuple(t : (int, int)) : game bool
+fun viewTuple(t : (int, int)) : game<a> bool
   match t
     (x, y) -> view(x, y)
 
-fun is-live(x : int, y : int) : <debug, game> bool
+fun is-live(x : int, y : int) : <debug, game<a>> bool
   val ns = neighbors(x, y)
   debug(ns.show)
   val count = ns.filter(viewTuple).length
@@ -83,47 +71,41 @@ fun sleep(dt : duration) : <debug, utc, div, ndet> unit
   while { duration(now()) - start < dt }
     ()
 
-fun runWithVector(body : () -> <game, debug|e> ()) : <debug|e> ()
+fun runWithVector(body : () -> <game<vector<bool>>, debug|e> ()) : <debug|e> ()
   with val x-width = 30
   with val y-width = 30
-  var field := vector(x-width * y-width, False)
-  var nextField := vector(x-width * y-width, False)
+  val field = vector(x-width * y-width, False)
   with fun view(x, y)
     if x < 0 || x >= x-width || y < 0 || y >= y-width then
       False
     else
       get-vector(field, x, y)
-  with fun set(x, y, v)
+  with val nextField = field
+  with ctl set(x, y, v)
+    debug("set: " ++ x.show ++ ", " ++ y.show ++ ", " ++ v.show)
     if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
-      nextField := set-vector(nextField, x, y, v)
-  with fun next()
-    field := nextField
-    nextField := vector(x-width * y-width, False)
-  body()
-
-fun runWithBit(body : () -> <game, debug, console|e> ()) : <console, debug|e> ()
-  with val x-width = 8
-  with val y-width = 8
-  var field := int64(0)
-  var nextField := int64(0)
-  with fun view(x, y)
-    if x < 0 || x >= x-width || y < 0 || y >= y-width then
-      False
+      val new = set-vector(nextField, x, y, v)
+      mask<nextField>
+        with val nextField = new
+        resume(())
     else
-      get-bit(field, x, y)
-  with fun set(x, y, v)
-    if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
-      nextField := set-bit(nextField, x, y, v)
-  with fun next()
-    field := nextField
-    nextField := int64(0)
-    println("Value: " ++ field.show)
+      resume(())
+  with ctl next()
+    mask<view>
+      val new = nextField
+      with fun view(x, y)
+        if x < 0 || x >= x-width || y < 0 || y >= y-width then
+          False
+        else
+          get-vector(new, x, y)
+      resume(())
   body()
 
 fun main()
-  with fun debug(msg) ()
-  runWithBit
+  with fun debug(msg) println("DEBUG: " ++ msg)
+  runWithVector
     make-field()
+    debug("field initialized")
     next()
     print-field()
     while { True }
