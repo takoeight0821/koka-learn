@@ -8,15 +8,19 @@ import std/time/utc
 
 effect fun debug(msg : string) : unit
 
+// view the current cell state at (x, y).
 effect fun view(x : int, y : int) : bool
+// set the next cell state at (x, y) to v. It does not affect the current cell state.
 effect fun set(x : int, y : int, v : bool) : unit
+// go to the next generation. This should be called after all cells are set.
 effect fun next() : unit
 effect val x-width : int
 effect val y-width : int
 
 alias game = <view, set, next, x-width, y-width>
 
-fun print-board() : <game, console> unit
+// print the current cells.
+fun print-field() : <game, console> unit
   println("=====================================")
   list(0, x-width).foreach fn(x)
     list(0, y-width).foreach fn(y)
@@ -82,38 +86,38 @@ fun sleep(dt : duration) : <debug, utc, div, ndet> unit
 fun runWithVector(body : () -> <game, debug|e> ()) : <debug|e> ()
   with val x-width = 30
   with val y-width = 30
-  var table := vector(x-width * y-width, False)
-  var nextTable := vector(x-width * y-width, False)
+  var field := vector(x-width * y-width, False)
+  var nextField := vector(x-width * y-width, False)
   with fun view(x, y)
-      if x < 0 || x >= x-width || y < 0 || y >= y-width then
-        False
-      else
-        get-vector(table, x, y)
+    if x < 0 || x >= x-width || y < 0 || y >= y-width then
+      False
+    else
+      get-vector(field, x, y)
   with fun set(x, y, v)
-      if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
-        nextTable := set-vector(nextTable, x, y, v)
+    if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
+      nextField := set-vector(nextField, x, y, v)
   with fun next()
-      table := nextTable
-      nextTable := vector(x-width * y-width, False)
+    field := nextField
+    nextField := vector(x-width * y-width, False)
   body()
 
 fun runWithBit(body : () -> <game, debug, console|e> ()) : <console, debug|e> ()
   with val x-width = 8
   with val y-width = 8
-  var table := int64(0)
-  var nextTable := int64(0)
+  var field := int64(0)
+  var nextField := int64(0)
   with fun view(x, y)
-      if x < 0 || x >= x-width || y < 0 || y >= y-width then
-        False
-      else
-        get-bit(table, x, y)
+    if x < 0 || x >= x-width || y < 0 || y >= y-width then
+      False
+    else
+      get-bit(field, x, y)
   with fun set(x, y, v)
-      if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
-        nextTable := set-bit(nextTable, x, y, v)
+    if not(x < 0 || x >= x-width || y < 0 || y >= y-width) then
+      nextField := set-bit(nextField, x, y, v)
   with fun next()
-      table := nextTable
-      nextTable := int64(0)
-      println("Value: " ++ table.show)
+    field := nextField
+    nextField := int64(0)
+    println("Value: " ++ field.show)
   body()
 
 
@@ -122,12 +126,12 @@ fun main()
   runWithBit {
     make-field()
     next()
-    print-board()
+    print-field()
     while { True }
       sleep(seconds(1))
       list(0, x-width).foreach fn(x)
         list(0, y-width).foreach fn(y)
           set(x, y, is-live(x, y))
       next()
-      print-board()
+      print-field()
   }
