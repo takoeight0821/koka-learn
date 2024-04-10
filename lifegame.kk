@@ -52,7 +52,6 @@ fun main()
   with val x-width = 8
   with val y-width = 8
   var table := vector(x-width * y-width, False)
-  // var table := 0.int64
   with fun view(x, y)
       get-vector(table, x, y)
   with fun set(x, y, v)
